@@ -1,20 +1,20 @@
 #include "Fonts.h"
 
 //скорость отображения
-int speed = 40;
+int speed = 3;
 String text = "Hello world!!!"; 
 
 //спец символ
 char custom[8] =
 {
-	0b01111100,
+	0b00001110,
+	0b00110001,
+	0b01000001,
 	0b10000010,
-	0b10101010,
-	0b10101010,
-	0b10000010,
-	0b10111010,
-	0b10000010,
-	0b01111100
+	0b01000001,
+	0b00100001,
+	0b00010001,
+	0b00001110
 };
 
 
@@ -28,8 +28,10 @@ void setup()
 	pinMode(A3, OUTPUT);
 	pinMode(A4, OUTPUT);
 	pinMode(A5, OUTPUT);
-	pinMode(A6, OUTPUT);
-	pinMode(A7, OUTPUT);
+	pinMode(11, OUTPUT);
+	pinMode(12, OUTPUT);
+
+
 }
 
 
@@ -43,8 +45,8 @@ void display(const byte val)
 	digitalWrite(A3, val & (1 << 3) ? HIGH : LOW);
 	digitalWrite(A4, val & (1 << 4) ? HIGH : LOW);
 	digitalWrite(A5, val & (1 << 5) ? HIGH : LOW);
-	digitalWrite(A6, val & (1 << 6) ? HIGH : LOW);
-	digitalWrite(A7, val & (1 << 7) ? HIGH : LOW);
+	digitalWrite(11, val & (1 << 6) ? HIGH : LOW);
+	digitalWrite(12, val & (1 << 7) ? HIGH : LOW);
 	delay(speed); //ждем, чтобы горело
 }
 //-------------------
@@ -82,5 +84,6 @@ void displayText()
 //основной цикл
 void loop() 
 {
-	displayCustom();
+	//displayCustom();
+	displayText();
 }
