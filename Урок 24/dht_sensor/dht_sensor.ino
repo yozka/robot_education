@@ -28,10 +28,10 @@ void loop()
         const auto code = dht.read(pinDht, &temperature, &humidity, NULL);  
         if (code == SimpleDHTErrSuccess)
         {
-            //ошибок нет, можно прочитать даныне
-            Serial.print("Влажность: ");
+            //ошибок нет, можно вывести данные
+            Serial.print("Humidity: ");
             Serial.print(humidity);
-            Serial.print(" %\t Температура: ");
+            Serial.print(" %\t Temperature: ");
             Serial.print(temperature);
             Serial.println(" *C ");
         }
