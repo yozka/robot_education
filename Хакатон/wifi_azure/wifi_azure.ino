@@ -1,21 +1,27 @@
 #include <ESP8266WiFi.h> //вайфай
-#include <WiFiClientSecure.h>
+#include <WiFiClientSecure.h> //клиент для подключения
 #include <AzureIoTHubMQTTClient.h>
 
+#include <DHTesp.h> //DHT sensor library for ESPx by beege_tokyo
 
-//DHT sensor library for ESPx by beege_tokyo
-#include <DHTesp.h> //датчик температуры 
 
-#define IOTHUB_HOSTNAME         "iotTemperature3291.azure-devices.net"
-#define DEVICE_ID               "device-temperature"
-#define DEVICE_KEY              "QuXMKKN3fB/KpqGIPjDcfFLXfV3NeYI2rwOaDXKHoDE=" //Primary key of the device
-WiFiClientSecure tlsClient;
-AzureIoTHubMQTTClient client(tlsClient, IOTHUB_HOSTNAME, DEVICE_ID, DEVICE_KEY);
+
+#define PINLED                  5
+#define IOTHUB_HOSTNAME         "iotTemperature3291.azure-devices.net"//адрес подключения к облаку
+#define DEVICE_ID               "device-temperature"//название девайса
+#define DEVICE_KEY              "QuXMKKN3fB/KpqGIPjDcfFLXfV3NeYI2rwOaDXKHoDE=" //Первичный ключ девайса
+
+
+
+WiFiClientSecure tlsClient; //соеденение с вайфаем
+AzureIoTHubMQTTClient client(tlsClient, IOTHUB_HOSTNAME, DEVICE_ID, DEVICE_KEY); //клиент для облака
+
 
 
 DHTesp dht; 				//датчик температуры
+unsigned long lastMillis = 0; //интервал для следующей отправки данных
 
-unsigned long lastMillis = 0;
+
 
 //опрос датчика температуры
 void readSensor(float *temp, float *humidity)
@@ -27,35 +33,10 @@ void readSensor(float *temp, float *humidity)
 
 
 
-void connectToIoTHub() 
+//выполнение команды от сервера
+//{"Name":"led","Parameters":{"Activated":0}}
+void onLedCommand(String cmdName, JsonVariant jsonValue) 
 {
-    Serial.print("\nBeginning Azure IoT Hub Client... ");
-    if (client.begin()) 
-    {
-        Serial.println("OK");
-    } else 
-    {
-        Serial.println("Could not connect to MQTT");
-    }
-}
-
-void onClientEvent(const AzureIoTHubMQTTClient::AzureIoTHubMQTTClientEvent event) 
-{
-    Serial.println("Event iot");
-    if (event == AzureIoTHubMQTTClient::AzureIoTHubMQTTClientEventConnected) 
-    {
-        Serial.println("Connected to Azure IoT Hub");
-    }
-}
-
-void onActivateRelayCommand(String cmdName, JsonVariant jsonValue) 
-{
-    Serial.print("Command ");
-    Serial.println(cmdName);
-
-    //Parse cloud-to-device message JSON. In this example, I send the command message with following format:
-    //{"Name":"ActivateRelay","Parameters":{"Activated":0}}
-
     JsonObject& jsonObject = jsonValue.as<JsonObject>();
     if (jsonObject.containsKey("Parameters")) 
     {
@@ -63,36 +44,33 @@ void onActivateRelayCommand(String cmdName, JsonVariant jsonValue)
         auto isAct = (params["Activated"]);
         if (isAct) 
         {
-            Serial.println("Activated true");
-            digitalWrite(LED_BUILTIN, HIGH); //visualize relay activation with the LED
+            Serial.println("Led true");
+            digitalWrite(PINLED, HIGH);//визаулизация светодиода
         }
         else 
         {
-            Serial.println("Activated false");
-            digitalWrite(LED_BUILTIN, LOW);
+            Serial.println("Led false");
+            digitalWrite(PINLED, LOW);
         }
     }
 }
 
 
+
+//настройка устройства
 void setup() 
 {
     Serial.begin(115200);
-    while(!Serial) 
-    {
-        yield();
-    }
-    Serial.println();
 
-    pinMode(LED_BUILTIN, OUTPUT);
+    pinMode(PINLED, OUTPUT);
     dht.setup(16, DHTesp::DHT11);//настройка датчика температуры
 
     WiFi.disconnect();
     WiFi.softAPdisconnect();
 
     //настройка вайфая
-    WiFi.begin("Zoopark", "password");
-  
+    WiFi.begin("Имя сети", "Пароль");
+    //ждем кодгда подключится интернет
     Serial.print("Connecting");
     while (WiFi.status() != WL_CONNECTED)
     {
@@ -100,71 +78,58 @@ void setup()
         Serial.print(".");
     }
     Serial.println();
-  
     Serial.print("Connected, IP address: ");
     Serial.println(WiFi.localIP());
 
-    Serial.println("Waiting for sync");
+    //синхронизация с сервером времени
+    Serial.println("Sync time");
     NTP.begin(NTP_DEFAULT_HOST);
     while (NTP.getTime() < 30000)
     {
         Serial.print(".");
-        delay(1000);
+        delay(500);
     }
-    Serial.println("OK SYNC TIME");
+    Serial.println();
     //
 
-    //Handle client events
-    client.onEvent(onClientEvent);
-
-    //Add command to handle and its handler
-    //Command format is assumed like this: {"Name":"[COMMAND_NAME]","Parameters":[PARAMETERS_JSON_ARRAY]}
-    client.onCloudCommand("ActivateRelay", onActivateRelayCommand);
-
-    Serial.println("Ok!!!!!!!!");
- 
-
-
-
-    connectToIoTHub();
+    //привяжем команду к клиенту
+    //Формат команды таков: {"Name":"[COMMAND_NAME]","Parameters":[PARAMETERS_JSON_ARRAY]}
+    client.onCloudCommand("led", onLedCommand);
+    
+    //запуск
+    client.begin(); 
 }
 
+
+
+
+
+//обработка цикла сообщений
 void loop() 
 {
     client.run();
 
     if (client.connected()) 
     {
-        // Publish a message roughly every 3 second. Only after time is retrieved and set properly.
-        if(millis() - lastMillis > 1000 * 60 && timeStatus() != timeNotSet) 
+        //Публикуем собщения раз в 3 секунды, также учитываем стобы было установленно системное время
+        if(millis() - lastMillis > 3000 && timeStatus() != timeNotSet) 
         {
             lastMillis = millis();
 
-            //Read the actual temperature from sensor
+            //Читаем актуальную температуру от сенсора
             float temp, humidity;
             readSensor(&temp, &humidity);
             
-            //Get current timestamp, using Time lib
+            //Берем текущее время, используем библиотеку Timelib
             time_t currentTime = now();
 
-            // You can do this to publish payload to IoT Hub
-            String payload = "{\"DeviceId\":\"" + String(DEVICE_ID) + "\", \"MTemperature\":" + String(temp) + ", \"EventTime\":" + String(currentTime) + "}";
-            Serial.println(payload);
-            
-            ////client.publish(MQTT::Publish("devices/" + String(DEVICE_ID) + "/messages/events/", payload).set_qos(1));
-            //client.sendEvent(payload);
+            //Публикуем полезную нагрузку IoT Hub
+            Serial.println("DeviceId:" + String(DEVICE_ID) + ", MTemperature:" + String(temp) + ", EventTime:" + String(currentTime));
 
-
-            //Or instead, use this more convenient way
+            //Формируем строчку для отправки на сервер
             AzureIoTHubMQTTClient::KeyValueMap keyVal = {{"MTemperature", temp}, {"MHumidity", humidity}, {"DeviceId", DEVICE_ID}, {"EventTime", currentTime}};
             client.sendEventWithKeyVal(keyVal);
         }
     }
-    else 
-    {
-
-    }
-
-    delay(10); // <- fixes some issues with WiFi stability
-
+    delay(10); // <- магия для исправление проблем с устойчивостью работы с WiFi
 }
